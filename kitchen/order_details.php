@@ -84,6 +84,7 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
     $product_id = $_POST['product_id'];
     $action = $_POST['product_action'];
     $new_quantity = $_POST['new_quantity'] ?? 0;
+    $item_status = $_POST['item_status'] ?? 'ordered';
     
     // Validate that this is a real form submission
     if (!empty($product_id) && !empty($action)) {
@@ -96,41 +97,69 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
         $product_name = $product['name'];
         
         if ($action === 'accept') {
-        // Accept the product with specified quantity
-        if ($new_quantity > 0) {
-            $stmt = $mysqli->prepare("UPDATE order_items SET quantity = ?, status = 'accepted' WHERE order_id = ? AND product_id = ?");
-            $stmt->bind_param("iii", $new_quantity, $order_id, $product_id);
-            $stmt->execute();
-            
-            // Send notification to waiter (check for duplicates first)
-            $notification_message = "Product '$product_name' quantity updated to $new_quantity in Order #$order_id";
-            
-            // Check if similar notification already exists in the last 5 minutes
-            $stmt = $mysqli->prepare("
-                SELECT COUNT(*) as count FROM notifications 
-                WHERE order_id = ? AND user_id = ? AND message = ? 
-                AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-            ");
-            $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $existing_count = $result->fetch_assoc()['count'];
-            
-            if ($existing_count == 0) {
-                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'info')");
+            // Accept the product with specified quantity
+            if ($new_quantity > 0) {
+                $stmt = $mysqli->prepare("UPDATE order_items SET quantity = ?, status = 'ordered' WHERE order_id = ? AND product_id = ?");
+                $stmt->bind_param("iii", $new_quantity, $order_id, $product_id);
+                $stmt->execute();
+                
+                // Send notification to waiter (check for duplicates first)
+                $notification_message = "Product '$product_name' quantity updated to $new_quantity in Order #$order_id";
+                
+                // Check if similar notification already exists in the last 5 minutes
+                $stmt = $mysqli->prepare("
+                    SELECT COUNT(*) as count FROM notifications 
+                    WHERE order_id = ? AND user_id = ? AND message = ? 
+                    AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+                ");
                 $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
                 $stmt->execute();
+                $result = $stmt->get_result();
+                $existing_count = $result->fetch_assoc()['count'];
+                
+                if ($existing_count == 0) {
+                    $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'info')");
+                    $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+                    $stmt->execute();
+                }
+                
+                $message = "Product accepted successfully. Waiter notified.";
+            } else {
+                // Remove product if quantity is 0
+                $stmt = $mysqli->prepare("DELETE FROM order_items WHERE order_id = ? AND product_id = ?");
+                $stmt->bind_param("ii", $order_id, $product_id);
+                $stmt->execute();
+                
+                // Send notification to waiter (check for duplicates first)
+                $notification_message = "Product '$product_name' removed from Order #$order_id";
+                
+                // Check if similar notification already exists in the last 5 minutes
+                $stmt = $mysqli->prepare("
+                    SELECT COUNT(*) as count FROM notifications 
+                    WHERE order_id = ? AND user_id = ? AND message = ? 
+                    AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+                ");
+                $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $existing_count = $result->fetch_assoc()['count'];
+                
+                if ($existing_count == 0) {
+                    $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'warning')");
+                    $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+                    $stmt->execute();
+                }
+                
+                $message = "Product removed from order. Waiter notified.";
             }
-            
-            $message = "Product accepted successfully. Waiter notified.";
-        } else {
-            // Remove product if quantity is 0
+        } elseif ($action === 'reject') {
+            // Remove product from order
             $stmt = $mysqli->prepare("DELETE FROM order_items WHERE order_id = ? AND product_id = ?");
             $stmt->bind_param("ii", $order_id, $product_id);
             $stmt->execute();
             
             // Send notification to waiter (check for duplicates first)
-            $notification_message = "Product '$product_name' removed from Order #$order_id";
+            $notification_message = "Product '$product_name' rejected and removed from Order #$order_id";
             
             // Check if similar notification already exists in the last 5 minutes
             $stmt = $mysqli->prepare("
@@ -144,107 +173,173 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
             $existing_count = $result->fetch_assoc()['count'];
             
             if ($existing_count == 0) {
-                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'warning')");
+                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'danger')");
                 $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
                 $stmt->execute();
             }
             
-            $message = "Product removed from order. Waiter notified.";
-        }
-    } elseif ($action === 'reject') {
-        // Remove product from order
-        $stmt = $mysqli->prepare("DELETE FROM order_items WHERE order_id = ? AND product_id = ?");
-        $stmt->bind_param("ii", $order_id, $product_id);
-        $stmt->execute();
-        
-        // Send notification to waiter (check for duplicates first)
-        $notification_message = "Product '$product_name' rejected and removed from Order #$order_id";
-        
-        // Check if similar notification already exists in the last 5 minutes
-        $stmt = $mysqli->prepare("
-            SELECT COUNT(*) as count FROM notifications 
-            WHERE order_id = ? AND user_id = ? AND message = ? 
-            AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-        ");
-        $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $existing_count = $result->fetch_assoc()['count'];
-        
-        if ($existing_count == 0) {
-            $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'danger')");
+            $message = "Product rejected and removed from order. Waiter notified.";
+        } elseif ($action === 'update_status') {
+            // Update individual product status
+            $stmt = $mysqli->prepare("UPDATE order_items SET status = ? WHERE order_id = ? AND product_id = ?");
+            $stmt->bind_param("sii", $item_status, $order_id, $product_id);
+            $stmt->execute();
+            
+            // Send notification to waiter
+            $status_text = ucfirst($item_status);
+            $notification_message = "Product '$product_name' status updated to '$status_text' in Order #$order_id";
+            
+            // Determine notification type based on status
+            $notification_type = 'info';
+            if ($item_status === 'ready') {
+                $notification_type = 'success';
+            } elseif ($item_status === 'served') {
+                $notification_type = 'success';
+            }
+            
+            // Check if similar notification already exists in the last 5 minutes
+            $stmt = $mysqli->prepare("
+                SELECT COUNT(*) as count FROM notifications 
+                WHERE order_id = ? AND user_id = ? AND message = ? 
+                AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+            ");
             $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
             $stmt->execute();
+            $result = $stmt->get_result();
+            $existing_count = $result->fetch_assoc()['count'];
+            
+            if ($existing_count == 0) {
+                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param("iiss", $order_id, $order['user_id'], $notification_message, $notification_type);
+                $stmt->execute();
+            }
+            
+            $message = "Product status updated successfully. Waiter notified.";
+            
+            // Update overall kitchen status based on individual product statuses
+            $stmt = $mysqli->prepare("
+                SELECT 
+                    COUNT(*) as total_items,
+                    SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) as ready_items,
+                    SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END) as served_items,
+                    SUM(CASE WHEN status = 'preparing' THEN 1 ELSE 0 END) as preparing_items
+                FROM order_items 
+                WHERE order_id = ?
+            ");
+            $stmt->bind_param("i", $order_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $status_summary = $result->fetch_assoc();
+            
+            // Determine overall kitchen status
+            $new_kitchen_status = 'pending';
+            if ($status_summary['served_items'] == $status_summary['total_items']) {
+                $new_kitchen_status = 'ready';
+            } elseif ($status_summary['ready_items'] > 0 || $status_summary['preparing_items'] > 0) {
+                $new_kitchen_status = 'preparing';
+            }
+            
+            // Update kitchen status if it changed
+            if ($new_kitchen_status !== $order['kitchen_status']) {
+                $stmt = $mysqli->prepare("UPDATE orders SET kitchen_status = ? WHERE id = ?");
+                $stmt->bind_param("si", $new_kitchen_status, $order_id);
+                $stmt->execute();
+                
+                // Send notification to cashier when order is ready for payment
+                if ($new_kitchen_status === 'ready') {
+                    // Get all cashier users
+                    $cashiers = $mysqli->query("SELECT id FROM user WHERE role = 'cashier' AND status = 'active'")->fetch_all(MYSQLI_ASSOC);
+                    
+                    foreach ($cashiers as $cashier) {
+                        $notification_message = "Order #$order_id is ready for payment. Table: " . $order['table_name'] . ", Amount: $" . number_format($order['total_amount'], 2);
+                        
+                        // Check if similar notification already exists in the last 5 minutes
+                        $stmt = $mysqli->prepare("
+                            SELECT COUNT(*) as count FROM notifications 
+                            WHERE order_id = ? AND user_id = ? AND message LIKE ? 
+                            AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+                        ");
+                        $search_pattern = "Order #$order_id is ready for payment%";
+                        $stmt->bind_param("iis", $order_id, $cashier['id'], $search_pattern);
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+                        $existing_count = $result->fetch_assoc()['count'];
+                        
+                        if ($existing_count == 0) {
+                            $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'success')");
+                            $stmt->bind_param("iis", $order_id, $cashier['id'], $notification_message);
+                            $stmt->execute();
+                        }
+                    }
+                }
+            }
         }
         
-        $message = "Product rejected and removed from order. Waiter notified.";
-    }
-    
-    // Recalculate order total
-    $stmt = $mysqli->prepare("SELECT SUM(quantity * unit_price) as new_total FROM order_items WHERE order_id = ?");
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $new_total = $result->fetch_assoc()['new_total'] ?? 0;
-    
-    // Update order total
-    $stmt = $mysqli->prepare("UPDATE orders SET total_amount = ? WHERE id = ?");
-    $stmt->bind_param("di", $new_total, $order_id);
-    $stmt->execute();
-    
-    // Check if order has no items left
-    $stmt = $mysqli->prepare("SELECT COUNT(*) as item_count FROM order_items WHERE order_id = ?");
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $item_count = $result->fetch_assoc()['item_count'];
-    
-    if ($item_count == 0) {
-        // If no items left, cancel the order
-        $stmt = $mysqli->prepare("UPDATE orders SET status = 'cancelled', kitchen_status = 'cancelled' WHERE id = ?");
+        // Recalculate order total
+        $stmt = $mysqli->prepare("SELECT SUM(quantity * unit_price) as new_total FROM order_items WHERE order_id = ?");
         $stmt->bind_param("i", $order_id);
         $stmt->execute();
+        $result = $stmt->get_result();
+        $new_total = $result->fetch_assoc()['new_total'] ?? 0;
         
-        // Free the table
-        $stmt = $mysqli->prepare("UPDATE tables SET status = 'available' WHERE id = ?");
-        $stmt->bind_param("i", $order['table_id']);
+        // Update order total
+        $stmt = $mysqli->prepare("UPDATE orders SET total_amount = ? WHERE id = ?");
+        $stmt->bind_param("di", $new_total, $order_id);
         $stmt->execute();
         
-        // Send notification to waiter about order cancellation (check for duplicates first)
-        $notification_message = "Order #$order_id has been cancelled. All products were rejected by kitchen.";
-        
-        // Check if similar notification already exists in the last 5 minutes
-        $stmt = $mysqli->prepare("
-            SELECT COUNT(*) as count FROM notifications 
-            WHERE order_id = ? AND user_id = ? AND message = ? 
-            AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-        ");
-        $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+        // Check if order has no items left
+        $stmt = $mysqli->prepare("SELECT COUNT(*) as item_count FROM order_items WHERE order_id = ?");
+        $stmt->bind_param("i", $order_id);
         $stmt->execute();
         $result = $stmt->get_result();
-        $existing_count = $result->fetch_assoc()['count'];
+        $item_count = $result->fetch_assoc()['item_count'];
         
-        if ($existing_count == 0) {
-            $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'danger')");
+        if ($item_count == 0) {
+            // If no items left, cancel the order
+            $stmt = $mysqli->prepare("UPDATE orders SET status = 'cancelled', kitchen_status = 'cancelled' WHERE id = ?");
+            $stmt->bind_param("i", $order_id);
+            $stmt->execute();
+            
+            // Free the table
+            $stmt = $mysqli->prepare("UPDATE tables SET status = 'available' WHERE id = ?");
+            $stmt->bind_param("i", $order['table_id']);
+            $stmt->execute();
+            
+            // Send notification to waiter about order cancellation (check for duplicates first)
+            $notification_message = "Order #$order_id has been cancelled. All products were rejected by kitchen.";
+            
+            // Check if similar notification already exists in the last 5 minutes
+            $stmt = $mysqli->prepare("
+                SELECT COUNT(*) as count FROM notifications 
+                WHERE order_id = ? AND user_id = ? AND message = ? 
+                AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+            ");
             $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
             $stmt->execute();
+            $result = $stmt->get_result();
+            $existing_count = $result->fetch_assoc()['count'];
+            
+            if ($existing_count == 0) {
+                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'danger')");
+                $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+                $stmt->execute();
+            }
+            
+            $message = "All products rejected. Order cancelled and table freed. Waiter notified.";
         }
         
-        $message = "All products rejected. Order cancelled and table freed. Waiter notified.";
-    }
-    
-    // Refresh order data
-    $stmt = $mysqli->prepare("
-        SELECT o.*, t.name as table_name, u.name as waiter_name
-        FROM orders o
-        JOIN tables t ON o.table_id = t.id
-        JOIN user u ON o.user_id = u.id
-        WHERE o.id = ?
-    ");
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $order = $result->fetch_assoc();
+        // Refresh order data
+        $stmt = $mysqli->prepare("
+            SELECT o.*, t.name as table_name, u.name as waiter_name
+            FROM orders o
+            JOIN tables t ON o.table_id = t.id
+            JOIN user u ON o.user_id = u.id
+            WHERE o.id = ?
+        ");
+        $stmt->bind_param("i", $order_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $order = $result->fetch_assoc();
     }
 }
 
@@ -445,13 +540,27 @@ include 'layout/header.php';
                                         <td>$<?= number_format($item['unit_price'], 2) ?></td>
                                         <td>$<?= number_format($item['quantity'] * $item['unit_price'], 2) ?></td>
                                         <td>
-                                            <span class="badge badge-<?= 
-                                                $item['item_status'] == 'ordered' ? 'warning' : 
-                                                ($item['item_status'] == 'accepted' ? 'success' : 
-                                                ($item['item_status'] == 'served' ? 'info' : 'danger'))
-                                            ?>">
-                                                <?= ucfirst($item['item_status']) ?>
-                                            </span>
+                                            <?php if ($order['status'] !== 'completed'): ?>
+                                                <form method="post" class="d-inline">
+                                                    <input type="hidden" name="product_id" value="<?= $item['product_id'] ?>">
+                                                    <select name="item_status" class="form-control form-control-sm" style="width: 120px; display: inline-block;" onchange="this.form.submit()">
+                                                        <option value="ordered" <?= $item['item_status'] == 'ordered' ? 'selected' : '' ?>>Ordered</option>
+                                                        <option value="preparing" <?= $item['item_status'] == 'preparing' ? 'selected' : '' ?>>Preparing</option>
+                                                        <option value="ready" <?= $item['item_status'] == 'ready' ? 'selected' : '' ?>>Ready</option>
+                                                        <option value="served" <?= $item['item_status'] == 'served' ? 'selected' : '' ?>>Served</option>
+                                                    </select>
+                                                    <input type="hidden" name="product_action" value="update_status">
+                                                </form>
+                                            <?php else: ?>
+                                                <span class="badge badge-<?= 
+                                                    $item['item_status'] == 'ordered' ? 'warning' : 
+                                                    ($item['item_status'] == 'preparing' ? 'info' : 
+                                                    ($item['item_status'] == 'ready' ? 'primary' : 
+                                                    ($item['item_status'] == 'served' ? 'success' : 'danger')))
+                                                ?>">
+                                                    <?= ucfirst($item['item_status']) ?>
+                                                </span>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <?php if ($order['status'] !== 'completed' && $order['kitchen_status'] === 'pending'): ?>

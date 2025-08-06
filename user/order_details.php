@@ -15,7 +15,12 @@ if (empty($order_id)) {
 }
 
 // Fetch order details first
-$stmt = $mysqli->prepare("SELECT * FROM orders WHERE id = ?");
+$stmt = $mysqli->prepare("
+    SELECT o.*, t.name as table_name 
+    FROM orders o
+    JOIN tables t ON o.table_id = t.id
+    WHERE o.id = ?
+");
 $stmt->bind_param("i", $order_id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -26,38 +31,87 @@ if (!$order) {
     exit;
 }
 
-// Handle Payment - Only allowed when food is ready
-if (isset($_POST['process_payment'])) {
-    // Check if kitchen status is 'ready' before allowing payment
-    if ($order['kitchen_status'] !== 'ready') {
-        $payment_error = "Payment can only be processed when the food is ready to serve.";
-    } else {
-        $payment_type_id = $_POST['payment_type_id'];
-        $payment_date = date('Y-m-d');
-        $transaction_code = 'TRN-' . time(); // Example transaction code
-
-        // Insert into payment table
-        $stmt = $mysqli->prepare("INSERT INTO payment (order_id, payment_type_id, payment_date, transaction_code) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("iiss", $order_id, $payment_type_id, $payment_date, $transaction_code);
+// Handle Add Product to Order
+if (isset($_POST['add_product'])) {
+    $product_id = $_POST['product_id'];
+    $quantity = $_POST['quantity'];
+    $unit_price = $_POST['unit_price'];
+    
+    // Check if product already exists in order
+    $stmt = $mysqli->prepare("SELECT id, quantity FROM order_items WHERE order_id = ? AND product_id = ?");
+    $stmt->bind_param("ii", $order_id, $product_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $existing_item = $result->fetch_assoc();
+    
+    if ($existing_item) {
+        // Update quantity
+        $new_quantity = $existing_item['quantity'] + $quantity;
+        $stmt = $mysqli->prepare("UPDATE order_items SET quantity = ? WHERE id = ?");
+        $stmt->bind_param("ii", $new_quantity, $existing_item['id']);
         $stmt->execute();
-
-        // Update order status
-        $stmt = $mysqli->prepare("UPDATE orders SET status = 'completed' WHERE id = ?");
+    } else {
+        // Add new item
+        $stmt = $mysqli->prepare("INSERT INTO order_items (order_id, product_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'ordered')");
+        $stmt->bind_param("iiid", $order_id, $product_id, $quantity, $unit_price);
+        $stmt->execute();
+    }
+    
+    // Update order total
+    $stmt = $mysqli->prepare("
+        UPDATE orders SET total_amount = (
+            SELECT SUM(quantity * unit_price) 
+            FROM order_items 
+            WHERE order_id = ?
+        ) WHERE id = ?
+    ");
+    $stmt->bind_param("ii", $order_id, $order_id);
+    $stmt->execute();
+    
+    // Reset kitchen status to pending if it was ready
+    if ($order['kitchen_status'] == 'ready') {
+        $stmt = $mysqli->prepare("UPDATE orders SET kitchen_status = 'pending' WHERE id = ?");
         $stmt->bind_param("i", $order_id);
         $stmt->execute();
-
-        // Update table status
-        $order_result = $mysqli->query("SELECT table_id FROM orders WHERE id = $order_id");
-        $order = $order_result->fetch_assoc();
-        $table_id = $order['table_id'];
-        $stmt = $mysqli->prepare("UPDATE tables SET status = 'available' WHERE id = ?");
-        $stmt->bind_param("i", $table_id);
-        $stmt->execute();
-
-        header("Location: order_history.php");
-        exit;
     }
+    
+    header("Location: order_details.php?order_id=" . $order_id);
+    exit;
 }
+
+// Handle Update Quantity
+if (isset($_POST['update_quantity'])) {
+    $item_id = $_POST['item_id'];
+    $new_quantity = $_POST['new_quantity'];
+    
+    if ($new_quantity > 0) {
+        $stmt = $mysqli->prepare("UPDATE order_items SET quantity = ? WHERE id = ? AND order_id = ?");
+        $stmt->bind_param("iii", $new_quantity, $item_id, $order_id);
+        $stmt->execute();
+    } else {
+        // Remove item if quantity is 0
+        $stmt = $mysqli->prepare("DELETE FROM order_items WHERE id = ? AND order_id = ?");
+        $stmt->bind_param("ii", $item_id, $order_id);
+        $stmt->execute();
+    }
+    
+    // Update order total
+    $stmt = $mysqli->prepare("
+        UPDATE orders SET total_amount = (
+            SELECT COALESCE(SUM(quantity * unit_price), 0) 
+            FROM order_items 
+            WHERE order_id = ?
+        ) WHERE id = ?
+    ");
+    $stmt->bind_param("ii", $order_id, $order_id);
+    $stmt->execute();
+    
+    header("Location: order_details.php?order_id=" . $order_id);
+    exit;
+}
+
+// Payment processing is now handled by cashier only
+// Removed payment processing logic from waiter interface
 
 // Handle Order Cancellation - Only allowed when kitchen hasn't started preparing
 if (isset($_POST['cancel_order'])) {
@@ -79,25 +133,54 @@ if (isset($_POST['cancel_order'])) {
     }
 }
 
-
-
-
-// Fetch order items
+// Refresh order data after updates
 $stmt = $mysqli->prepare("
-    SELECT oi.quantity, oi.unit_price, p.name as product_name
+    SELECT o.*, t.name as table_name 
+    FROM orders o
+    JOIN tables t ON o.table_id = t.id
+    WHERE o.id = ?
+");
+$stmt->bind_param("i", $order_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$order = $result->fetch_assoc();
+
+// Fetch order items with product details and individual status
+$stmt = $mysqli->prepare("
+    SELECT oi.id, oi.quantity, oi.unit_price, oi.status as item_status, p.name as product_name, p.id as product_id
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
     WHERE oi.order_id = ?
+    ORDER BY oi.created_at ASC
 ");
 $stmt->bind_param("i", $order_id);
 $stmt->execute();
 $result = $stmt->get_result();
 $order_items = $result->fetch_all(MYSQLI_ASSOC);
 
-// Fetch payment types
-$payment_types_result = $mysqli->query("SELECT * FROM payment_type ORDER BY name ASC");
-$payment_types = $payment_types_result->fetch_all(MYSQLI_ASSOC);
+// Fetch all products for adding to order
+$products_result = $mysqli->query("
+    SELECT p.id, p.name, p.original_price,
+        d.percent AS discount_percent,
+        d.start_date, d.end_date
+    FROM products p
+    LEFT JOIN discounts d ON d.product_id = p.id
+        AND d.start_date <= CURDATE() AND d.end_date >= CURDATE()
+    WHERE p.status = 'active'
+    ORDER BY p.name ASC
+");
+$products = [];
+while ($row = $products_result->fetch_assoc()) {
+    if ($row['discount_percent'] !== null) {
+        $row['final_price'] = round($row['original_price'] * (1 - $row['discount_percent'] / 100), 2);
+    } else {
+        $row['final_price'] = $row['original_price'];
+    }
+    $products[] = $row;
+}
 
+// Payment types are no longer needed in waiter interface
+// Payment processing is handled by cashier
 
 include 'layout/header.php';
 ?>
@@ -132,7 +215,52 @@ include 'layout/header.php';
                     <?php if (!empty($order['kitchen_notes'])): ?>
                         <p><strong>Kitchen Notes:</strong> <?= htmlspecialchars($order['kitchen_notes']) ?></p>
                     <?php endif; ?>
-                    <div class="table-responsive">
+                    
+                    <!-- Add Product to Order Section -->
+                    <?php if ($order['status'] == 'pending'): ?>
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h5 class="mb-0">Add Products to Order</h5>
+                            </div>
+                            <div class="card-body">
+                                <form action="order_details.php?order_id=<?= $order_id ?>" method="post">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label for="product_id">Product</label>
+                                                <select name="product_id" id="product_id" class="form-control" required>
+                                                    <option value="">Select Product</option>
+                                                    <?php foreach ($products as $product): ?>
+                                                        <option value="<?= $product['id'] ?>" data-price="<?= $product['final_price'] ?>">
+                                                            <?= htmlspecialchars($product['name']) ?> - $<?= number_format($product['final_price'], 2) ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="form-group">
+                                                <label for="quantity">Quantity</label>
+                                                <input type="number" name="quantity" id="quantity" class="form-control" value="1" min="1" required>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="form-group">
+                                                <label for="unit_price">Unit Price</label>
+                                                <input type="number" name="unit_price" id="unit_price" class="form-control" step="0.01" readonly>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="unit_price" id="hidden_unit_price">
+                                    <button type="submit" name="add_product" class="btn btn-success">
+                                        <i class="fas fa-plus"></i> Add to Order
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <div class="table-responsive mt-3">
                         <table class="table">
                             <thead>
                                 <tr>
@@ -140,15 +268,50 @@ include 'layout/header.php';
                                     <th>Quantity</th>
                                     <th>Unit Price</th>
                                     <th>Total</th>
+                                    <th>Status</th>
+                                    <?php if ($order['status'] == 'pending'): ?>
+                                        <th>Actions</th>
+                                    <?php endif; ?>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($order_items as $item): ?>
                                 <tr>
                                     <td><?= htmlspecialchars($item['product_name']) ?></td>
-                                    <td><?= $item['quantity'] ?></td>
+                                    <td>
+                                        <?php if ($order['status'] == 'pending'): ?>
+                                            <form action="order_details.php?order_id=<?= $order_id ?>" method="post" style="display: inline;">
+                                                <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
+                                                <input type="number" name="new_quantity" value="<?= $item['quantity'] ?>" min="0" class="form-control form-control-sm" style="width: 80px; display: inline-block;">
+                                                <button type="submit" name="update_quantity" class="btn btn-sm btn-outline-primary ml-1">
+                                                    <i class="fas fa-save"></i>
+                                                </button>
+                                            </form>
+                                        <?php else: ?>
+                                            <?= $item['quantity'] ?>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>$<?= number_format($item['unit_price'], 2) ?></td>
                                     <td>$<?= number_format($item['quantity'] * $item['unit_price'], 2) ?></td>
+                                    <td>
+                                        <span class="badge badge-<?= 
+                                            $item['item_status'] == 'ordered' ? 'warning' : 
+                                            ($item['item_status'] == 'served' ? 'success' : 'danger')
+                                        ?>">
+                                            <?= ucfirst($item['item_status']) ?>
+                                        </span>
+                                    </td>
+                                    <?php if ($order['status'] == 'pending'): ?>
+                                        <td>
+                                            <form action="order_details.php?order_id=<?= $order_id ?>" method="post" style="display: inline;" onsubmit="return confirm('Remove this item?')">
+                                                <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
+                                                <input type="hidden" name="new_quantity" value="0">
+                                                <button type="submit" name="update_quantity" class="btn btn-sm btn-outline-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    <?php endif; ?>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -156,6 +319,10 @@ include 'layout/header.php';
                                 <tr>
                                     <th colspan="3" class="text-right">Grand Total:</th>
                                     <th>$<?= number_format($order['total_amount'], 2) ?></th>
+                                    <th></th>
+                                    <?php if ($order['status'] == 'pending'): ?>
+                                        <th></th>
+                                    <?php endif; ?>
                                 </tr>
                             </tfoot>
                         </table>
@@ -200,24 +367,22 @@ include 'layout/header.php';
                         </span>
                     </div>
                     
-                    <!-- Payment Section - Only show when food is ready -->
+                    <!-- Payment Section - Cashier handles payments -->
                     <?php if ($order['status'] == 'pending' && $order['kitchen_status'] == 'ready'): ?>
                         <div class="mb-3">
                             <h6>Payment</h6>
-                            <form action="order_details.php?order_id=<?= $order_id ?>" method="post">
-                                <div class="form-group">
-                                    <label for="payment_type_id">Payment Method</label>
-                                    <select name="payment_type_id" id="payment_type_id" class="form-control" required>
-                                        <option value="">Select Payment Method</option>
-                                        <?php foreach ($payment_types as $type): ?>
-                                            <option value="<?= $type['id'] ?>"><?= htmlspecialchars($type['name']) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <button type="submit" name="process_payment" class="btn btn-success btn-block">
-                                    <i class="fas fa-credit-card"></i> Process Payment
-                                </button>
-                            </form>
+                            <div class="alert alert-warning">
+                                <i class="fas fa-cash-register"></i> 
+                                <strong>Order Ready for Payment!</strong><br>
+                                This order is ready to be served. Please direct the customer to the cashier for payment processing.
+                            </div>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> 
+                                <strong>Cashier Information:</strong><br>
+                                • Order ID: <strong>#<?= $order_id ?></strong><br>
+                                • Total Amount: <strong>$<?= number_format($order['total_amount'], 2) ?></strong><br>
+                                • Table: <strong><?= htmlspecialchars($order['table_name'] ?? 'N/A') ?></strong>
+                            </div>
                         </div>
                     <?php elseif ($order['status'] == 'pending' && $order['kitchen_status'] != 'ready'): ?>
                         <div class="alert alert-info">
@@ -225,7 +390,7 @@ include 'layout/header.php';
                         </div>
                     <?php elseif ($order['status'] == 'completed'): ?>
                         <div class="alert alert-success">
-                            <i class="fas fa-check-circle"></i> This order has been paid and completed.
+                            <i class="fas fa-check-circle"></i> This order has been paid and completed by the cashier.
                         </div>
                     <?php endif; ?>
                     
@@ -328,5 +493,15 @@ include 'layout/header.php';
         </div>
     </div>
 </div>
+
+<script>
+// Auto-fill unit price when product is selected
+document.getElementById('product_id').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const price = selectedOption.getAttribute('data-price');
+    document.getElementById('unit_price').value = price;
+    document.getElementById('hidden_unit_price').value = price;
+});
+</script>
 
 <?php include 'layout/footer.php'; ?>
