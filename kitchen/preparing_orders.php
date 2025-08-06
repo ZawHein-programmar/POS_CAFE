@@ -1,0 +1,108 @@
+<?php
+require_once '../auth/isLogin.php';
+require_once '../require/db.php';
+
+if (!isset($_SESSION['kitchen_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
+// Fetch preparing orders
+$preparing_orders = $mysqli->query("
+    SELECT o.id, o.order_date, o.total_amount, o.created_at, o.kitchen_notes, t.name as table_name, u.name as waiter_name
+    FROM orders o
+    JOIN tables t ON o.table_id = t.id
+    JOIN user u ON o.user_id = u.id
+    WHERE o.kitchen_status = 'preparing'
+    ORDER BY o.created_at ASC
+")->fetch_all(MYSQLI_ASSOC);
+
+include 'layout/header.php';
+?>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Preparing Orders</h2>
+                <a href="index.php" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+
+            <?php if (empty($preparing_orders)): ?>
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-fire fa-3x text-info mb-3"></i>
+                        <h4>No Orders Being Prepared</h4>
+                        <p class="text-muted">No orders are currently being prepared.</p>
+                    </div>
+                </div>
+            <?php else: ?>
+                <div class="row">
+                    <?php foreach ($preparing_orders as $order): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card order-card preparing">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">Order #<?= $order['id'] ?></h5>
+                                        <span class="badge badge-info status-badge">Preparing</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <strong>Table:</strong><br>
+                                            <?= htmlspecialchars($order['table_name']) ?>
+                                        </div>
+                                        <div class="col-6">
+                                            <strong>Waiter:</strong><br>
+                                            <?= htmlspecialchars($order['waiter_name']) ?>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <strong>Date:</strong><br>
+                                            <?= $order['order_date'] ?>
+                                        </div>
+                                        <div class="col-6">
+                                            <strong>Amount:</strong><br>
+                                            $<?= number_format($order['total_amount'], 2) ?>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <strong>Order Time:</strong><br>
+                                            <?= date('H:i:s', strtotime($order['created_at'])) ?>
+                                        </div>
+                                    </div>
+                                    
+                                    <?php if (!empty($order['kitchen_notes'])): ?>
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <strong>Notes:</strong><br>
+                                            <small class="text-muted"><?= htmlspecialchars($order['kitchen_notes']) ?></small>
+                                        </div>
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <div class="text-center">
+                                        <a href="order_details.php?order_id=<?= $order['id'] ?>" class="btn btn-info btn-sm mb-2">
+                                            <i class="fas fa-eye"></i> View Details
+                                        </a>
+                                        
+                                        <a href="order_details.php?order_id=<?= $order['id'] ?>" class="btn btn-success btn-sm mb-2">
+                                            <i class="fas fa-bell"></i> Mark Ready
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<?php include 'layout/footer.php'; ?> 

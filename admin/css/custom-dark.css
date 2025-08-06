@@ -1,0 +1,27 @@
+#theme-switcher {
+  cursor: pointer;
+  position: relative;
+  top: 0;
+}
+
+body.dark-theme {
+  background-color: #1a1a1a;
+  color: #fff;
+}
+
+.dark-theme .card {
+  background-color: #2a2a2a;
+  color: #fff;
+}
+
+.dark-theme .table {
+  color: #fff;
+}
+
+.dark-theme .breadcrumb-item a {
+  color: #fff;
+}
+
+.dark-theme .nav-label {
+  color: #fff;
+}

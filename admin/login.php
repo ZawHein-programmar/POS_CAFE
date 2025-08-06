@@ -1,0 +1,55 @@
+<?php
+require_once '../require/db.php';
+session_start();
+
+if (isset($_POST['user_name'])) {
+    $user_name = $_POST['user_name'];
+    $password = $_POST['password'];
+
+    $stmt = $mysqli->prepare("SELECT id, user_name, password, name, role FROM user WHERE user_name = ? AND (role = 'admin' OR role = 'cashier')");
+    $stmt->bind_param("s", $user_name);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $admin = $result->fetch_assoc();
+
+    if ($admin && password_verify($password, $admin['password'])) {
+        $_SESSION['admin_id'] = $admin['id'];
+        $_SESSION['admin_name'] = $admin['name'];
+        $_SESSION['role'] = $admin['role'];
+        header("Location: index.php");
+        exit;
+    } else {
+        $error = "Invalid username or password.";
+    }
+}
+
+include 'layouts/header.php';
+?>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card mt-5">
+                <div class="card-body">
+                    <h3 class="card-title text-center">Admin Login</h3>
+                    <?php if (isset($error)): ?>
+                        <div class="alert alert-danger"><?= $error ?></div>
+                    <?php endif; ?>
+                    <form action="login.php" method="post">
+                        <div class="form-group">
+                            <label for="user_name">Username</label>
+                            <input type="text" name="user_name" id="user_name" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" name="password" id="password" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Login</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include 'layouts/footer.php'; ?>
