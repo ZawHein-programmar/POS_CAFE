@@ -22,7 +22,7 @@ require './layouts/header.php';
                                         <h5 class="card-title">Total Users</h5>
                                         <h3 class="mb-0">
                                             <?php
-                                            $stmt = $mysqli->prepare("SELECT COUNT(*) as count FROM users");
+                                            $stmt = $mysqli->prepare("SELECT COUNT(*) as count FROM user");
                                             $stmt->execute();
                                             $result = $stmt->get_result();
                                             echo $result->fetch_assoc()['count'];
