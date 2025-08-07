@@ -61,6 +61,44 @@ if (isset($_POST['update_status'])) {
             
             $message = "Order status updated successfully.";
             
+            // Send notification about status change
+            $status_change_message = "Order #$order_id kitchen status updated to '" . ucfirst($new_status) . "'";
+            
+            // Notify waiter about status change
+            $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'info')");
+            $stmt->bind_param("iis", $order_id, $order['user_id'], $status_change_message);
+            $stmt->execute();
+            
+            // If order is ready for payment, notify all cashiers
+            if ($new_status === 'ready') {
+                // Get all cashier users
+                $cashiers = $mysqli->query("SELECT id FROM user WHERE role = 'cashier' AND status = 'active'")->fetch_all(MYSQLI_ASSOC);
+                
+                foreach ($cashiers as $cashier) {
+                    $payment_notification = "Order #$order_id is ready for payment. Table: " . $order['table_name'] . ", Amount: $" . number_format($order['total_amount'], 2);
+                    
+                    // Check if similar notification already exists in the last 5 minutes
+                    $stmt = $mysqli->prepare("
+                        SELECT COUNT(*) as count FROM notifications 
+                        WHERE order_id = ? AND user_id = ? AND message LIKE ? 
+                        AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+                    ");
+                    $search_pattern = "Order #$order_id is ready for payment%";
+                    $stmt->bind_param("iis", $order_id, $cashier['id'], $search_pattern);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $existing_count = $result->fetch_assoc()['count'];
+                    
+                    if ($existing_count == 0) {
+                        $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'success')");
+                        $stmt->bind_param("iis", $order_id, $cashier['id'], $payment_notification);
+                        $stmt->execute();
+                    }
+                }
+                
+                $message .= " Order is now ready for payment. Cashiers notified.";
+            }
+            
             // Refresh order data after update
             $stmt = $mysqli->prepare("
                 SELECT o.*, t.name as table_name, u.name as waiter_name
@@ -179,6 +217,33 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
             }
             
             $message = "Product rejected and removed from order. Waiter notified.";
+        } elseif ($action === 'cancel') {
+            // Cancel the product (mark as cancelled instead of removing)
+            $stmt = $mysqli->prepare("UPDATE order_items SET status = 'cancelled' WHERE order_id = ? AND product_id = ?");
+            $stmt->bind_param("ii", $order_id, $product_id);
+            $stmt->execute();
+            
+            // Send notification to waiter (check for duplicates first)
+            $notification_message = "Product '$product_name' cancelled in Order #$order_id";
+            
+            // Check if similar notification already exists in the last 5 minutes
+            $stmt = $mysqli->prepare("
+                SELECT COUNT(*) as count FROM notifications 
+                WHERE order_id = ? AND user_id = ? AND message = ? 
+                AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+            ");
+            $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $existing_count = $result->fetch_assoc()['count'];
+            
+            if ($existing_count == 0) {
+                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'warning')");
+                $stmt->bind_param("iis", $order_id, $order['user_id'], $notification_message);
+                $stmt->execute();
+            }
+            
+            $message = "Product cancelled successfully. Waiter notified.";
         } elseif ($action === 'update_status') {
             // Update individual product status
             $stmt = $mysqli->prepare("UPDATE order_items SET status = ? WHERE order_id = ? AND product_id = ?");
@@ -216,13 +281,15 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
             
             $message = "Product status updated successfully. Waiter notified.";
             
-            // Update overall kitchen status based on individual product statuses
+            // REAL-TIME ORDER STATUS CHECKING SYSTEM
+            // Check all products in the order and update overall kitchen status
             $stmt = $mysqli->prepare("
                 SELECT 
                     COUNT(*) as total_items,
                     SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) as ready_items,
                     SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END) as served_items,
-                    SUM(CASE WHEN status = 'preparing' THEN 1 ELSE 0 END) as preparing_items
+                    SUM(CASE WHEN status = 'preparing' THEN 1 ELSE 0 END) as preparing_items,
+                    SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_items
                 FROM order_items 
                 WHERE order_id = ?
             ");
@@ -231,12 +298,27 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
             $result = $stmt->get_result();
             $status_summary = $result->fetch_assoc();
             
-            // Determine overall kitchen status
-            $new_kitchen_status = 'pending';
-            if ($status_summary['served_items'] == $status_summary['total_items']) {
+            // Calculate active items (excluding cancelled)
+            $active_items = $status_summary['total_items'] - $status_summary['cancelled_items'];
+            
+            // Determine new kitchen status based on product statuses
+            $new_kitchen_status = $order['kitchen_status'];
+            
+            if ($active_items == 0) {
+                // All items cancelled
+                $new_kitchen_status = 'cancelled';
+            } elseif ($status_summary['served_items'] == $active_items) {
+                // All active items served
+                $new_kitchen_status = 'ready';
+            } elseif ($status_summary['ready_items'] == $active_items) {
+                // All active items ready
                 $new_kitchen_status = 'ready';
             } elseif ($status_summary['ready_items'] > 0 || $status_summary['preparing_items'] > 0) {
+                // Some items ready or preparing
                 $new_kitchen_status = 'preparing';
+            } else {
+                // All items still ordered
+                $new_kitchen_status = 'accepted';
             }
             
             // Update kitchen status if it changed
@@ -245,13 +327,21 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
                 $stmt->bind_param("si", $new_kitchen_status, $order_id);
                 $stmt->execute();
                 
-                // Send notification to cashier when order is ready for payment
+                // Send notification about status change
+                $status_change_message = "Order #$order_id kitchen status updated to '" . ucfirst($new_kitchen_status) . "'";
+                
+                // Notify waiter about status change
+                $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'info')");
+                $stmt->bind_param("iis", $order_id, $order['user_id'], $status_change_message);
+                $stmt->execute();
+                
+                // If order is ready for payment, notify all cashiers
                 if ($new_kitchen_status === 'ready') {
                     // Get all cashier users
                     $cashiers = $mysqli->query("SELECT id FROM user WHERE role = 'cashier' AND status = 'active'")->fetch_all(MYSQLI_ASSOC);
                     
                     foreach ($cashiers as $cashier) {
-                        $notification_message = "Order #$order_id is ready for payment. Table: " . $order['table_name'] . ", Amount: $" . number_format($order['total_amount'], 2);
+                        $payment_notification = "Order #$order_id is ready for payment. Table: " . $order['table_name'] . ", Amount: $" . number_format($order['total_amount'], 2);
                         
                         // Check if similar notification already exists in the last 5 minutes
                         $stmt = $mysqli->prepare("
@@ -267,16 +357,18 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
                         
                         if ($existing_count == 0) {
                             $stmt = $mysqli->prepare("INSERT INTO notifications (order_id, user_id, message, type) VALUES (?, ?, ?, 'success')");
-                            $stmt->bind_param("iis", $order_id, $cashier['id'], $notification_message);
+                            $stmt->bind_param("iis", $order_id, $cashier['id'], $payment_notification);
                             $stmt->execute();
                         }
                     }
+                    
+                    $message .= " Order is now ready for payment. Cashiers notified.";
                 }
             }
         }
         
-        // Recalculate order total
-        $stmt = $mysqli->prepare("SELECT SUM(quantity * unit_price) as new_total FROM order_items WHERE order_id = ?");
+        // Recalculate order total - exclude cancelled items
+        $stmt = $mysqli->prepare("SELECT COALESCE(SUM(quantity * unit_price), 0) as new_total FROM order_items WHERE order_id = ? AND status != 'cancelled'");
         $stmt->bind_param("i", $order_id);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -287,15 +379,25 @@ if (isset($_POST['product_action']) && isset($_POST['product_id'])) {
         $stmt->bind_param("di", $new_total, $order_id);
         $stmt->execute();
         
-        // Check if order has no items left
-        $stmt = $mysqli->prepare("SELECT COUNT(*) as item_count FROM order_items WHERE order_id = ?");
+        // Check if order has no active items left (all items cancelled or removed)
+        $stmt = $mysqli->prepare("
+            SELECT 
+                COUNT(*) as total_items,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_items
+            FROM order_items 
+            WHERE order_id = ?
+        ");
         $stmt->bind_param("i", $order_id);
         $stmt->execute();
         $result = $stmt->get_result();
-        $item_count = $result->fetch_assoc()['item_count'];
+        $item_summary = $result->fetch_assoc();
         
-        if ($item_count == 0) {
-            // If no items left, cancel the order
+        $total_items = $item_summary['total_items'];
+        $cancelled_items = $item_summary['cancelled_items'];
+        $active_items = $total_items - $cancelled_items;
+        
+        if ($total_items == 0 || $active_items == 0) {
+            // If no items left or all items are cancelled, cancel the order
             $stmt = $mysqli->prepare("UPDATE orders SET status = 'cancelled', kitchen_status = 'cancelled' WHERE id = ?");
             $stmt->bind_param("i", $order_id);
             $stmt->execute();
@@ -359,28 +461,24 @@ $order_items = $result->fetch_all(MYSQLI_ASSOC);
 include 'layout/header.php';
 ?>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>Order #<?= $order_id ?> Details</h2>
+<?php if (isset($message)): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <?= htmlspecialchars($message) ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="card-title mb-0">Order #<?= $order_id ?> Details</h4>
                 <a href="javascript:history.back()" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Back
                 </a>
             </div>
-            
-            <?php if (isset($message)): ?>
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    <?= $message ?>
-                    <button type="button" class="close" data-dismiss="alert">
-                        <span>&times;</span>
-                    </button>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <div class="row">
+            <div class="card-body">
+                <div class="row">
         <!-- Order Information -->
         <div class="col-md-4">
             <div class="card">
@@ -534,7 +632,7 @@ include 'layout/header.php';
                                                     </div>
                                                 </form>
                                             <?php else: ?>
-                                                <span class="badge badge-secondary"><?= $item['quantity'] ?></span>
+                                                <span class="badge bg-secondary"><?= $item['quantity'] ?></span>
                                             <?php endif; ?>
                                         </td>
                                         <td>$<?= number_format($item['unit_price'], 2) ?></td>
@@ -548,15 +646,17 @@ include 'layout/header.php';
                                                         <option value="preparing" <?= $item['item_status'] == 'preparing' ? 'selected' : '' ?>>Preparing</option>
                                                         <option value="ready" <?= $item['item_status'] == 'ready' ? 'selected' : '' ?>>Ready</option>
                                                         <option value="served" <?= $item['item_status'] == 'served' ? 'selected' : '' ?>>Served</option>
+                                                        <option value="cancelled" <?= $item['item_status'] == 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
                                                     </select>
                                                     <input type="hidden" name="product_action" value="update_status">
                                                 </form>
                                             <?php else: ?>
-                                                <span class="badge badge-<?= 
+                                                <span class="badge bg-<?= 
                                                     $item['item_status'] == 'ordered' ? 'warning' : 
                                                     ($item['item_status'] == 'preparing' ? 'info' : 
                                                     ($item['item_status'] == 'ready' ? 'primary' : 
-                                                    ($item['item_status'] == 'served' ? 'success' : 'danger')))
+                                                    ($item['item_status'] == 'served' ? 'success' : 
+                                                    ($item['item_status'] == 'cancelled' ? 'secondary' : 'danger'))))
                                                 ?>">
                                                     <?= ucfirst($item['item_status']) ?>
                                                 </span>
@@ -568,6 +668,12 @@ include 'layout/header.php';
                                                     <input type="hidden" name="product_id" value="<?= $item['product_id'] ?>">
                                                     <button type="submit" name="product_action" value="reject" class="btn btn-sm btn-outline-danger" title="Reject and remove this product">
                                                         <i class="fas fa-times"></i> Reject
+                                                    </button>
+                                                </form>
+                                                <form method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel \'<?= htmlspecialchars($item['product_name']) ?>\'? This will mark it as cancelled instead of removing it.')">
+                                                    <input type="hidden" name="product_id" value="<?= $item['product_id'] ?>">
+                                                    <button type="submit" name="product_action" value="cancel" class="btn btn-sm btn-outline-warning" title="Cancel this product">
+                                                        <i class="fas fa-times-circle"></i> Cancel
                                                     </button>
                                                 </form>
                                             <?php else: ?>
@@ -588,20 +694,24 @@ include 'layout/header.php';
                     <?php endif; ?>
                 </div>
             </div>
-
-            <!-- Kitchen Notes -->
-            <?php if (!empty($order['kitchen_notes'])): ?>
-            <div class="card mt-3">
-                <div class="card-header">
-                    <h5 class="mb-0">Kitchen Notes</h5>
-                </div>
-                <div class="card-body">
-                    <p class="mb-0"><?= nl2br(htmlspecialchars($order['kitchen_notes'])) ?></p>
-                </div>
-            </div>
-            <?php endif; ?>
         </div>
     </div>
 </div>
+
+<!-- Kitchen Notes -->
+<?php if (!empty($order['kitchen_notes'])): ?>
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Kitchen Notes</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-0"><?= nl2br(htmlspecialchars($order['kitchen_notes'])) ?></p>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php include 'layout/footer.php'; ?> 

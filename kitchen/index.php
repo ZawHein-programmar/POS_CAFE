@@ -40,76 +40,76 @@ $recent_orders = $mysqli->query("
 include 'layout/header.php';
 ?>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h2 class="mb-4">Welcome, <?= htmlspecialchars($_SESSION['kitchen_name']) ?>!</h2>
-        </div>
-    </div>
-
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4><?= $stats['pending'] ?></h4>
-                            <p class="mb-0">Pending Orders</p>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title">Welcome, <?= htmlspecialchars($_SESSION['kitchen_name']) ?>!</h4>
+            </div>
+            <div class="card-body">
+                <!-- Statistics Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4><?= $stats['pending'] ?></h4>
+                                        <p class="mb-0">Pending Orders</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-clock fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4><?= $stats['accepted'] ?></h4>
+                                        <p class="mb-0">Accepted Orders</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-check fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4><?= $stats['preparing'] ?></h4>
+                                        <p class="mb-0">Preparing</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-fire fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h4><?= $stats['ready'] ?></h4>
+                                        <p class="mb-0">Ready to Serve</p>
+                                    </div>
+                                    <div class="align-self-center">
+                                        <i class="fas fa-bell fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4><?= $stats['accepted'] ?></h4>
-                            <p class="mb-0">Accepted Orders</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-check fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4><?= $stats['preparing'] ?></h4>
-                            <p class="mb-0">Preparing</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-fire fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4><?= $stats['ready'] ?></h4>
-                            <p class="mb-0">Ready to Serve</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-bell fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Quick Actions -->
     <div class="row mb-4">
@@ -118,26 +118,26 @@ include 'layout/header.php';
                 <div class="card-body">
                     <h5 class="card-title">Quick Actions</h5>
                     <div class="row">
-                        <div class="col-md-3">
-                            <a href="pending_orders.php" class="btn btn-warning btn-lg btn-block">
+                        <div class="col-md-3 mb-3">
+                            <a href="pending_orders.php" class="btn btn-warning btn-lg w-100">
                                 <i class="fas fa-clock"></i><br>
                                 View Pending Orders
                             </a>
                         </div>
-                        <div class="col-md-3">
-                            <a href="accepted_orders.php" class="btn btn-success btn-lg btn-block">
+                        <div class="col-md-3 mb-3">
+                            <a href="accepted_orders.php" class="btn btn-success btn-lg w-100">
                                 <i class="fas fa-check"></i><br>
                                 View Accepted Orders
                             </a>
                         </div>
-                        <div class="col-md-3">
-                            <a href="preparing_orders.php" class="btn btn-info btn-lg btn-block">
+                        <div class="col-md-3 mb-3">
+                            <a href="preparing_orders.php" class="btn btn-info btn-lg w-100">
                                 <i class="fas fa-fire"></i><br>
                                 View Preparing Orders
                             </a>
                         </div>
-                        <div class="col-md-3">
-                            <a href="all_orders.php" class="btn btn-secondary btn-lg btn-block">
+                        <div class="col-md-3 mb-3">
+                            <a href="all_orders.php" class="btn btn-secondary btn-lg w-100">
                                 <i class="fas fa-list"></i><br>
                                 View All Orders
                             </a>
@@ -176,7 +176,7 @@ include 'layout/header.php';
                                     <td><?= $order['order_date'] ?></td>
                                     <td>$<?= number_format($order['total_amount'], 2) ?></td>
                                     <td>
-                                        <span class="badge badge-<?= 
+                                        <span class="badge bg-<?= 
                                             $order['kitchen_status'] == 'pending' ? 'warning' : 
                                             ($order['kitchen_status'] == 'accepted' ? 'success' : 
                                             ($order['kitchen_status'] == 'rejected' ? 'danger' : 
@@ -196,6 +196,9 @@ include 'layout/header.php';
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
                 </div>
             </div>
         </div>

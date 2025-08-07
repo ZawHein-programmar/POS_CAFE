@@ -1,5 +1,5 @@
 <?php
-// Include database connection
+require_once("../auth/isLogin.php");
 require_once '../require/db.php';
 
 $order_id = $_GET['order_id'] ?? 0;

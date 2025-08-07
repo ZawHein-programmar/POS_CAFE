@@ -16,6 +16,9 @@ if (isset($_POST['user_name'])) {
         $_SESSION['admin_id'] = $admin['id'];
         $_SESSION['admin_name'] = $admin['name'];
         $_SESSION['role'] = $admin['role'];
+        // Set the standard session variables for auth system
+        $_SESSION['id'] = $admin['id'];
+        $_SESSION['name'] = $admin['name'];
         header("Location: index.php");
         exit;
     } else {

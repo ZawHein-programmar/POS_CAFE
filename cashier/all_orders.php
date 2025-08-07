@@ -1,13 +1,8 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
 
-if (!isset($_SESSION['cashier_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Filter options
+// Get filter parameters
 $status_filter = $_GET['status'] ?? '';
 $date_filter = $_GET['date'] ?? date('Y-m-d');
 

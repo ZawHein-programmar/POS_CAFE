@@ -1,9 +1,9 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
 
-if (!isset($_SESSION['waiter_id']) || !isset($_SESSION['table_id'])) {
-    header("Location: login.php");
+if (!isset($_SESSION['table_id'])) {
+    header("Location: index.php");
     exit;
 }
 

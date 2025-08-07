@@ -1,11 +1,6 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
-
-if (!isset($_SESSION['cashier_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 $order_id = $_GET['order_id'] ?? 0;
 

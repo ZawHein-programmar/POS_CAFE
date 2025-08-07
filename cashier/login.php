@@ -24,6 +24,10 @@ if ($_POST) {
         $_SESSION['cashier_id'] = $user['id'];
         $_SESSION['cashier_name'] = $user['name'];
         $_SESSION['cashier_username'] = $user['user_name'];
+        // Set the standard session variables for auth system
+        $_SESSION['role'] = 'cashier';
+        $_SESSION['id'] = $user['id'];
+        $_SESSION['name'] = $user['name'];
         header("Location: index.php");
         exit;
     } else {

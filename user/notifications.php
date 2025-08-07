@@ -1,11 +1,6 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
-
-if (!isset($_SESSION['waiter_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 // Mark notification as read
 if (isset($_POST['mark_read'])) {

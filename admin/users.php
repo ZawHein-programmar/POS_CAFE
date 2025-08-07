@@ -1,5 +1,5 @@
 <?php
-// Include database connection
+require_once("../auth/isLogin.php");
 require_once '../require/db.php';
 
 // Handle form submissions for add, edit, delete
@@ -75,53 +75,54 @@ $users = $result->fetch_all(MYSQLI_ASSOC);
 include 'layouts/header.php';
 ?>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="card-title">Users</h4>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title">Users Management</h4>
+            </div>
+            <div class="card-body">
                     
                     <!-- Add/Edit Form -->
                     <form action="users.php" method="post" enctype="multipart/form-data" class="mb-3">
                         <input type="hidden" name="action" value="<?= isset($user_to_edit) ? 'edit' : 'add' ?>">
                         <input type="hidden" name="id" value="<?= $id ?>">
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="user_name">Username</label>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="user_name" class="form-label">Username</label>
                                 <input type="text" class="form-control" id="user_name" name="user_name" value="<?= isset($user_to_edit) ? htmlspecialchars($user_to_edit['user_name']) : '' ?>" required>
                             </div>
-                            <div class="form-group col-md-6">
-                                <label for="password">Password</label>
+                            <div class="col-md-6 mb-3">
+                                <label for="password" class="form-label">Password</label>
                                 <input type="password" class="form-control" id="password" name="password" <?= isset($user_to_edit) ? '' : 'required' ?>>
                                 <?php if (isset($user_to_edit)): ?><small class="form-text text-muted">Leave blank to keep current password.</small><?php endif; ?>
                             </div>
                         </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="name">Full Name</label>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="name" class="form-label">Full Name</label>
                                 <input type="text" class="form-control" id="name" name="name" value="<?= isset($user_to_edit) ? htmlspecialchars($user_to_edit['name']) : '' ?>" required>
                             </div>
-                            <div class="form-group col-md-3">
-                                <label for="role">Role</label>
-                                <select class="form-control" id="role" name="role">
+                            <div class="col-md-3 mb-3">
+                                <label for="role" class="form-label">Role</label>
+                                <select class="form-select" id="role" name="role">
                                     <option value="admin" <?= (isset($user_to_edit) && $user_to_edit['role'] == 'admin') ? 'selected' : '' ?>>Admin</option>
                                     <option value="cashier" <?= (isset($user_to_edit) && $user_to_edit['role'] == 'cashier') ? 'selected' : '' ?>>Cashier</option>
                                     <option value="kitchen" <?= (isset($user_to_edit) && $user_to_edit['role'] == 'kitchen') ? 'selected' : '' ?>>Kitchen</option>
                                     <option value="waiter" <?= (isset($user_to_edit) && $user_to_edit['role'] == 'waiter') ? 'selected' : '' ?>>Waiter</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-3">
-                                <label for="status">Status</label>
-                                <select class="form-control" id="status" name="status">
+                            <div class="col-md-3 mb-3">
+                                <label for="status" class="form-label">Status</label>
+                                <select class="form-select" id="status" name="status">
                                     <option value="active" <?= (isset($user_to_edit) && $user_to_edit['status'] == 'active') ? 'selected' : '' ?>>Active</option>
                                     <option value="inactive" <?= (isset($user_to_edit) && $user_to_edit['status'] == 'inactive') ? 'selected' : '' ?>>Inactive</option>
                                 </select>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="image">Image</label>
-                            <input type="file" class="form-control-file" id="image" name="image">
+                        <div class="mb-3">
+                            <label for="image" class="form-label">Image</label>
+                            <input type="file" class="form-control" id="image" name="image">
                             <?php if (isset($user_to_edit) && !empty($user_to_edit['image'])): ?>
                             <input type="hidden" name="existing_image" value="<?= htmlspecialchars($user_to_edit['image']) ?>">
                             <img src="<?= $target_dir . htmlspecialchars($user_to_edit['image']) ?>" alt="User Image" width="100" class="mt-2">
@@ -131,7 +132,7 @@ include 'layouts/header.php';
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-striped table-bordered zero-configuration">
+                        <table class="table table-striped table-bordered">
                             <thead>
                                 <tr>
                                     <th>ID</th>

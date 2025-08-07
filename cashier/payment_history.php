@@ -1,13 +1,8 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
 
-if (!isset($_SESSION['cashier_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Filter by date
+// Get date range for payment history
 $filter_date = $_GET['date'] ?? date('Y-m-d');
 
 // Fetch payment history

@@ -1,13 +1,8 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
 
-if (!isset($_SESSION['cashier_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Clear notifications for this cashier
+// Clear all notifications for the current user
 $stmt = $mysqli->prepare("DELETE FROM notifications WHERE user_id = ?");
 $stmt->bind_param("i", $_SESSION['cashier_id']);
 $stmt->execute();

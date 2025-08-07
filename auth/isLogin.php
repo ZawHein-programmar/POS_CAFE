@@ -38,8 +38,22 @@ if (!$user) {
                 break;
         }
     }
-    if ($code != $user['role']) {
+    
+    // Check if user has the correct role for this section
+    $allowed = false;
+    if ($code == "waiter" && $user['role'] == "waiter") {
+        $allowed = true;
+    } elseif ($code == "admin" && ($user['role'] == "admin" || $user['role'] == "cashier")) {
+        $allowed = true;
+    } elseif ($code == "cashier" && $user['role'] == "cashier") {
+        $allowed = true;
+    } elseif ($code == "kitchen" && $user['role'] == "kitchen") {
+        $allowed = true;
+    }
+    
+    if (!$allowed) {
         header("location:../401.html");
+        exit;
     }
 }
 

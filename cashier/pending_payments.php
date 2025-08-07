@@ -1,11 +1,6 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
-
-if (!isset($_SESSION['cashier_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 // Handle payment processing
 if (isset($_POST['process_payment'])) {
@@ -55,6 +50,13 @@ $pending_orders = $mysqli->query("
 
 // Fetch payment types
 $payment_types = $mysqli->query("SELECT * FROM payment_type ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+
+// Get unread notifications count for real-time updates
+$stmt = $mysqli->prepare("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE");
+$stmt->bind_param("i", $_SESSION['cashier_id']);
+$stmt->execute();
+$result = $stmt->get_result();
+$unread_notifications = $result->fetch_assoc()['count'];
 
 include 'layout/header.php';
 ?>
@@ -199,5 +201,77 @@ include 'layout/header.php';
         </div>
     <?php endif; ?>
 </div>
+
+<!-- Real-time Updates Script -->
+<script>
+let lastNotificationCount = <?= $unread_notifications ?>;
+let refreshInterval;
+
+// Function to check for new notifications and update page
+function checkForUpdates() {
+    fetch('check_notifications.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.unread_count > lastNotificationCount) {
+                // New notifications received
+                lastNotificationCount = data.unread_count;
+                
+                // Show notification
+                if (data.new_orders_ready > 0) {
+                    showNotification(`${data.new_orders_ready} new order(s) ready for payment!`, 'success');
+                }
+                
+                // Refresh the page to show updated data
+                setTimeout(() => {
+                    location.reload();
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking for updates:', error);
+        });
+}
+
+// Function to show browser notification
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="fas fa-bell"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Start real-time checking when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Check for updates every 10 seconds
+    refreshInterval = setInterval(checkForUpdates, 10000);
+    
+    // Also check when user becomes active (tab focus)
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            checkForUpdates();
+        }
+    });
+});
+
+// Clean up interval when page unloads
+window.addEventListener('beforeunload', function() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
+</script>
 
 <?php include 'layout/footer.php'; ?> 

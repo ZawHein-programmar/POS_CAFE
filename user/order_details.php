@@ -1,11 +1,6 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
-
-if (!isset($_SESSION['waiter_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 $order_id = $_GET['order_id'] ?? 0;
 
@@ -57,12 +52,12 @@ if (isset($_POST['add_product'])) {
         $stmt->execute();
     }
     
-    // Update order total
+    // Update order total - exclude cancelled items
     $stmt = $mysqli->prepare("
         UPDATE orders SET total_amount = (
-            SELECT SUM(quantity * unit_price) 
+            SELECT COALESCE(SUM(quantity * unit_price), 0) 
             FROM order_items 
-            WHERE order_id = ?
+            WHERE order_id = ? AND status != 'cancelled'
         ) WHERE id = ?
     ");
     $stmt->bind_param("ii", $order_id, $order_id);
@@ -95,12 +90,12 @@ if (isset($_POST['update_quantity'])) {
         $stmt->execute();
     }
     
-    // Update order total
+    // Update order total - exclude cancelled items
     $stmt = $mysqli->prepare("
         UPDATE orders SET total_amount = (
             SELECT COALESCE(SUM(quantity * unit_price), 0) 
             FROM order_items 
-            WHERE order_id = ?
+            WHERE order_id = ? AND status != 'cancelled'
         ) WHERE id = ?
     ");
     $stmt->bind_param("ii", $order_id, $order_id);
@@ -123,7 +118,7 @@ if (isset($_POST['cancel_order'])) {
 
         // Update table status
         $stmt = $mysqli->prepare("UPDATE tables SET status = 'available' WHERE id = ?");
-        $stmt->bind_param("i", $order_id);
+        $stmt->bind_param("i", $order['table_id']);
         $stmt->execute();
 
         header("Location: order_history.php");
@@ -185,24 +180,23 @@ while ($row = $products_result->fetch_assoc()) {
 include 'layout/header.php';
 ?>
 
-<div class="container-fluid">
-    <?php if (isset($notifications_cleared) && $notifications_cleared): ?>
-        <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <i class="fas fa-bell"></i> Order notifications have been cleared automatically.
-            <button type="button" class="close" data-dismiss="alert">
-                <span>&times;</span>
-            </button>
-        </div>
-    <?php endif; ?>
-    
-    <div class="row">
+<?php if (isset($notifications_cleared) && $notifications_cleared): ?>
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <i class="fas fa-bell"></i> Order notifications have been cleared automatically.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
+<div class="row">
         <div class="col-md-8">
             <div class="card">
-                <div class="card-body">
+                <div class="card-header">
                     <h4 class="card-title">Order #<?= $order_id ?> Details</h4>
+                </div>
+                <div class="card-body">
                     <p><strong>Status:</strong> <?= ucfirst($order['status']) ?></p>
                     <p><strong>Kitchen Status:</strong> 
-                        <span class="badge badge-<?= 
+                        <span class="badge bg-<?= 
                             $order['kitchen_status'] == 'pending' ? 'warning' : 
                             ($order['kitchen_status'] == 'accepted' ? 'success' : 
                             ($order['kitchen_status'] == 'rejected' ? 'danger' : 
@@ -226,9 +220,9 @@ include 'layout/header.php';
                                 <form action="order_details.php?order_id=<?= $order_id ?>" method="post">
                                     <div class="row">
                                         <div class="col-md-6">
-                                            <div class="form-group">
-                                                <label for="product_id">Product</label>
-                                                <select name="product_id" id="product_id" class="form-control" required>
+                                            <div class="mb-3">
+                                                <label for="product_id" class="form-label">Product</label>
+                                                <select name="product_id" id="product_id" class="form-select" required>
                                                     <option value="">Select Product</option>
                                                     <?php foreach ($products as $product): ?>
                                                         <option value="<?= $product['id'] ?>" data-price="<?= $product['final_price'] ?>">
@@ -239,14 +233,14 @@ include 'layout/header.php';
                                             </div>
                                         </div>
                                         <div class="col-md-3">
-                                            <div class="form-group">
-                                                <label for="quantity">Quantity</label>
+                                            <div class="mb-3">
+                                                <label for="quantity" class="form-label">Quantity</label>
                                                 <input type="number" name="quantity" id="quantity" class="form-control" value="1" min="1" required>
                                             </div>
                                         </div>
                                         <div class="col-md-3">
-                                            <div class="form-group">
-                                                <label for="unit_price">Unit Price</label>
+                                            <div class="mb-3">
+                                                <label for="unit_price" class="form-label">Unit Price</label>
                                                 <input type="number" name="unit_price" id="unit_price" class="form-control" step="0.01" readonly>
                                             </div>
                                         </div>
@@ -279,11 +273,11 @@ include 'layout/header.php';
                                 <tr>
                                     <td><?= htmlspecialchars($item['product_name']) ?></td>
                                     <td>
-                                        <?php if ($order['status'] == 'pending'): ?>
+                                        <?php if ($order['status'] == 'pending' && $item['item_status'] != 'served'): ?>
                                             <form action="order_details.php?order_id=<?= $order_id ?>" method="post" style="display: inline;">
                                                 <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
                                                 <input type="number" name="new_quantity" value="<?= $item['quantity'] ?>" min="0" class="form-control form-control-sm" style="width: 80px; display: inline-block;">
-                                                <button type="submit" name="update_quantity" class="btn btn-sm btn-outline-primary ml-1">
+                                                <button type="submit" name="update_quantity" class="btn btn-sm btn-outline-primary ms-1">
                                                     <i class="fas fa-save"></i>
                                                 </button>
                                             </form>
@@ -294,7 +288,7 @@ include 'layout/header.php';
                                     <td>$<?= number_format($item['unit_price'], 2) ?></td>
                                     <td>$<?= number_format($item['quantity'] * $item['unit_price'], 2) ?></td>
                                     <td>
-                                        <span class="badge badge-<?= 
+                                        <span class="badge bg-<?= 
                                             $item['item_status'] == 'ordered' ? 'warning' : 
                                             ($item['item_status'] == 'served' ? 'success' : 'danger')
                                         ?>">
@@ -303,13 +297,19 @@ include 'layout/header.php';
                                     </td>
                                     <?php if ($order['status'] == 'pending'): ?>
                                         <td>
-                                            <form action="order_details.php?order_id=<?= $order_id ?>" method="post" style="display: inline;" onsubmit="return confirm('Remove this item?')">
-                                                <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
-                                                <input type="hidden" name="new_quantity" value="0">
-                                                <button type="submit" name="update_quantity" class="btn btn-sm btn-outline-danger">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </form>
+                                            <?php if ($item['item_status'] == 'served'): ?>
+                                                <span class="text-success">
+                                                    <i class="fas fa-check-circle"></i> Served
+                                                </span>
+                                            <?php else: ?>
+                                                <form action="order_details.php?order_id=<?= $order_id ?>" method="post" style="display: inline;" onsubmit="return confirm('Remove this item?')">
+                                                    <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
+                                                    <input type="hidden" name="new_quantity" value="0">
+                                                    <button type="submit" name="update_quantity" class="btn btn-sm btn-outline-danger">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         </td>
                                     <?php endif; ?>
                                 </tr>
@@ -332,8 +332,10 @@ include 'layout/header.php';
         </div>
         <div class="col-md-4">
             <div class="card">
-                <div class="card-body">
+                <div class="card-header">
                     <h4 class="card-title">Order Actions</h4>
+                </div>
+                <div class="card-body">
                     
                     <?php if (isset($payment_error)): ?>
                         <div class="alert alert-danger"><?= $payment_error ?></div>
@@ -346,7 +348,7 @@ include 'layout/header.php';
                     <!-- Order Status Information -->
                     <div class="mb-3">
                         <h6>Order Status:</h6>
-                        <span class="badge badge-<?= 
+                        <span class="badge bg-<?= 
                             $order['status'] == 'pending' ? 'warning' : 
                             ($order['status'] == 'completed' ? 'success' : 'danger')
                         ?>">
@@ -357,7 +359,7 @@ include 'layout/header.php';
                     <!-- Kitchen Status Information -->
                     <div class="mb-3">
                         <h6>Kitchen Status:</h6>
-                        <span class="badge badge-<?= 
+                        <span class="badge bg-<?= 
                             $order['kitchen_status'] == 'pending' ? 'warning' : 
                             ($order['kitchen_status'] == 'accepted' ? 'success' : 
                             ($order['kitchen_status'] == 'rejected' ? 'danger' : 
@@ -399,7 +401,7 @@ include 'layout/header.php';
                         <div class="mb-3">
                             <h6>Cancel Order</h6>
                             <form action="order_details.php?order_id=<?= $order_id ?>" method="post" onsubmit="return confirm('Are you sure you want to cancel this order?')">
-                                <button type="submit" name="cancel_order" class="btn btn-danger btn-block">
+                                <button type="submit" name="cancel_order" class="btn btn-danger w-100">
                                     <i class="fas fa-times"></i> Cancel Order
                                 </button>
                             </form>

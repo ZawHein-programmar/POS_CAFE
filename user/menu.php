@@ -1,11 +1,6 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
-
-if (!isset($_SESSION['waiter_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 // Set table_id for the order
 if (isset($_GET['table_id'])) {

@@ -1,13 +1,8 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
 
-if (!isset($_SESSION['cashier_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Get date range
+// Get date range for reports
 $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
 

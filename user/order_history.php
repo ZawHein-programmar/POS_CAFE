@@ -1,11 +1,6 @@
 <?php
+require_once '../auth/isLogin.php';
 require_once '../require/db.php';
-session_start();
-
-if (!isset($_SESSION['waiter_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 $waiter_id = $_SESSION['waiter_id'];
 
@@ -25,12 +20,13 @@ $orders = $result->fetch_all(MYSQLI_ASSOC);
 include 'layout/header.php';
 ?>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="card-title">Your Order History</h4>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title">Your Order History</h4>
+            </div>
+            <div class="card-body">
                     <a href="index.php" class="btn btn-secondary mb-3">Back to Tables</a>
                     <div class="table-responsive">
                         <table class="table table-striped table-bordered zero-configuration">
@@ -53,7 +49,7 @@ include 'layout/header.php';
                                     <td><?= $order['order_date'] ?></td>
                                     <td><?= ucfirst($order['status']) ?></td>
                                     <td>
-                                        <span class="badge badge-<?= 
+                                        <span class="badge bg-<?= 
                                             $order['kitchen_status'] == 'pending' ? 'warning' : 
                                             ($order['kitchen_status'] == 'accepted' ? 'success' : 
                                             ($order['kitchen_status'] == 'rejected' ? 'danger' : 

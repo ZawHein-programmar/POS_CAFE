@@ -1,15 +1,17 @@
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-    <script src="../admin/plugins/common/common.min.js"></script>
-    <script src="../admin/js/custom.min.js"></script>
-    <script src="../admin/js/settings.js"></script>
-    <script src="../admin/js/gleek.js"></script>
-    <script src="../admin/js/styleSwitcher.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Auto-refresh every 30 seconds for real-time updates
-        setTimeout(function() {
-            location.reload();
-        }, 30000);
+        // Auto-refresh dashboard every 30 seconds
+        if (window.location.pathname.includes('index.php')) {
+            setTimeout(function() {
+                window.location.reload();
+            }, 30000);
+        }
     </script>
 </body>
 </html> 
