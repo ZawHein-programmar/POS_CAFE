@@ -130,7 +130,8 @@ include 'layout/header.php';
                                                 $sec_cat_id = (int)$secCat['id'];
                                                 $sec_cat_name = $secCat['name'];
                                                 $products = $secCat['products'];
-                                                $perPage = 3;
+                                                // Show three rows per page (3 columns per row on lg => 9 items)
+                                                $perPage = 9;
                                                 $pageParam = 'page_sc_' . $sec_cat_id;
                                                 $currentPage = isset($_GET[$pageParam]) ? max(1, (int)$_GET[$pageParam]) : 1;
                                                 $totalProducts = count($products);
@@ -148,7 +149,15 @@ include 'layout/header.php';
                                                     <div class="col-lg-4 col-md-4 col-sm-6 col-12 mb-3">
                                                         <div class="card h-100">
                                                             <?php if (!empty($product['images'])): ?>
-                                                                <img class="card-img-top" src="../img/<?= htmlspecialchars($product['images']) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="height: 160px; width: 100%; object-fit: cover; border-radius: 8px;">
+                                                                <a href="#" class="js-product-trigger" 
+                                                                   data-name="<?= htmlspecialchars($product['name']) ?>"
+                                                                   data-image="../img/<?= htmlspecialchars($product['images']) ?>"
+                                                                   data-original-price="<?= htmlspecialchars($product['original_price']) ?>"
+                                                                   data-discounted-price="<?= htmlspecialchars($product['discounted_price'] !== null ? $product['discounted_price'] : '') ?>"
+                                                                   data-discount-percent="<?= htmlspecialchars($product['discount_percent'] !== null ? $product['discount_percent'] : '') ?>"
+                                                                >
+                                                                    <img class="card-img-top" src="../img/<?= htmlspecialchars($product['images']) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="height: 160px; width: 100%; object-fit: cover; border-radius: 8px;">
+                                                                </a>
                                                             <?php endif; ?>
                                                             <div class="card-body">
                                                                 <h6 class="card-title mb-2"><?= htmlspecialchars($product['name']) ?></h6>
@@ -216,5 +225,80 @@ include 'layout/header.php';
         </div>
     </div>
 </div>
+
+<!-- Product Detail Modal -->
+<div class="modal fade" id="productModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalProductName">Product Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <img id="modalProductImage" src="" alt="" class="img-fluid rounded" />
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-2">
+                            <span id="modalOriginalPrice" class="text-muted text-decoration-line-through d-none"></span>
+                            <span id="modalDiscountedPrice" class="fw-bold text-danger ms-2 d-none"></span>
+                            <span id="modalRegularPrice" class="fw-bold"></span>
+                        </div>
+                        <span id="modalDiscountBadge" class="badge bg-success d-none"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+    </div>
+
+<script>
+document.addEventListener('click', function(event) {
+    const trigger = event.target.closest('.js-product-trigger');
+    if (!trigger) return;
+    event.preventDefault();
+
+    const name = trigger.getAttribute('data-name') || '';
+    const image = trigger.getAttribute('data-image') || '';
+    const original = trigger.getAttribute('data-original-price');
+    const discounted = trigger.getAttribute('data-discounted-price');
+    const discountPercent = trigger.getAttribute('data-discount-percent');
+
+    document.getElementById('modalProductName').textContent = name;
+    const imgEl = document.getElementById('modalProductImage');
+    imgEl.src = image;
+    imgEl.alt = name;
+
+    const originalEl = document.getElementById('modalOriginalPrice');
+    const discountedEl = document.getElementById('modalDiscountedPrice');
+    const regularEl = document.getElementById('modalRegularPrice');
+    const badgeEl = document.getElementById('modalDiscountBadge');
+
+    // Reset visibility
+    originalEl.classList.add('d-none');
+    discountedEl.classList.add('d-none');
+    badgeEl.classList.add('d-none');
+    regularEl.classList.add('d-none');
+
+    if (discounted && discounted !== '' && discountPercent && discountPercent !== '') {
+        originalEl.textContent = `$${Number(original).toFixed(2)}`;
+        discountedEl.textContent = `$${Number(discounted).toFixed(2)}`;
+        badgeEl.textContent = `${discountPercent}% OFF`;
+        originalEl.classList.remove('d-none');
+        discountedEl.classList.remove('d-none');
+        badgeEl.classList.remove('d-none');
+    } else if (original) {
+        regularEl.textContent = `$${Number(original).toFixed(2)}`;
+        regularEl.classList.remove('d-none');
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('productModal'));
+    modal.show();
+});
+</script>
 
 <?php include 'layout/footer.php'; ?>
