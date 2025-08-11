@@ -270,7 +270,7 @@ include 'layout/header.php';
 
 <script>
 function printReceipt(transactionCode) {
-    window.open('print_receipt.php?transaction=' + transactionCode, '_blank', 'width=400,height=600');
+    window.open('print_receipt.php?transaction=' + transactionCode, '_blank', 'width=420,height=720');
 }
 </script>
 
