@@ -89,18 +89,18 @@ if (isset($_POST['user_name'])) {
             <p class="mb-0">POS Cafe User Panel</p>
         </div>
         <div class="login-body">
-            <?php if (isset($error)): ?>
+                    <?php if (isset($error)): ?>
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle"></i> <?= htmlspecialchars($error) ?>
                 </div>
-            <?php endif; ?>
-            <form action="login.php" method="post">
+                    <?php endif; ?>
+                    <form action="login.php" method="post">
                 <div class="mb-3">
                     <label for="user_name" class="form-label">
                         <i class="fas fa-user"></i> Username
                     </label>
                     <input type="text" class="form-control" id="user_name" name="user_name" required>
-                </div>
+                        </div>
                 <div class="mb-4">
                     <label for="password" class="form-label">
                         <i class="fas fa-lock"></i> Password

@@ -34,13 +34,16 @@ if (isset($_POST['add_to_cart'])) {
             'quantity' => 1
         ];
     }
-    header("Location: menu.php");
+    // Preserve table_id and any pagination params on redirect
+    $redirectQuery = $_GET;
+    $redirectQuery['table_id'] = $_SESSION['table_id'];
+    header('Location: menu.php?' . http_build_query($redirectQuery));
     exit;
 }
 
 
-// Fetch categories and products
-$main_categories_result = $mysqli->query("SELECT * FROM main_categories ORDER BY name ASC");
+// Fetch categories and products (build structure with second category ids)
+$main_categories_result = $mysqli->query("SELECT id, name FROM main_categories ORDER BY name ASC");
 $main_categories = $main_categories_result->fetch_all(MYSQLI_ASSOC);
 
 $products_by_category = [];
@@ -56,7 +59,7 @@ foreach ($main_categories as $mc) {
     $second_categories_result = $stmt->get_result();
     $second_categories = $second_categories_result->fetch_all(MYSQLI_ASSOC);
 
-    $products_by_second_category = [];
+    $second_cat_entries = [];
     foreach ($second_categories as $sc) {
         $stmt = $mysqli->prepare("
             SELECT p.id, p.name, p.original_price, p.images,
@@ -81,11 +84,18 @@ foreach ($main_categories as $mc) {
             $products[] = $row;
         }
         if (!empty($products)) {
-            $products_by_second_category[$sc['name']] = $products;
+            $second_cat_entries[] = [
+                'id' => $sc['id'],
+                'name' => $sc['name'],
+                'products' => $products,
+            ];
         }
     }
-    if (!empty($products_by_second_category)) {
-        $products_by_category[$mc['name']] = $products_by_second_category;
+    if (!empty($second_cat_entries)) {
+        $products_by_category[] = [
+            'name' => $mc['name'],
+            'second_categories' => $second_cat_entries,
+        ];
     }
 }
 
@@ -105,7 +115,8 @@ include 'layout/header.php';
                     <hr>
 
                     <div id="accordion-one" class="accordion">
-                        <?php foreach ($products_by_category as $main_cat_name => $second_categories): ?>
+                        <?php foreach ($products_by_category as $mainCat): ?>
+                            <?php $main_cat_name = $mainCat['name']; ?>
                             <div class="card">
                                 <div class="card-header">
                                     <h5 class="mb-0" data-toggle="collapse" data-target="#collapse-<?= str_replace(' ', '', $main_cat_name) ?>" aria-expanded="true" aria-controls="collapse-<?= str_replace(' ', '', $main_cat_name) ?>">
@@ -114,19 +125,35 @@ include 'layout/header.php';
                                 </div>
                                 <div id="collapse-<?= str_replace(' ', '', $main_cat_name) ?>" class="collapse show" data-parent="#accordion-one">
                                     <div class="card-body">
-                                        <?php foreach ($second_categories as $sec_cat_name => $products): ?>
+                                        <?php foreach ($mainCat['second_categories'] as $secCat): ?>
+                                            <?php
+                                                $sec_cat_id = (int)$secCat['id'];
+                                                $sec_cat_name = $secCat['name'];
+                                                $products = $secCat['products'];
+                                                $perPage = 3;
+                                                $pageParam = 'page_sc_' . $sec_cat_id;
+                                                $currentPage = isset($_GET[$pageParam]) ? max(1, (int)$_GET[$pageParam]) : 1;
+                                                $totalProducts = count($products);
+                                                $totalPages = (int)ceil($totalProducts / $perPage);
+                                                $offset = ($currentPage - 1) * $perPage;
+                                                $pagedProducts = array_slice($products, $offset, $perPage);
+
+                                                // Build base query for links (preserve other params and table_id)
+                                                $baseQuery = $_GET;
+                                                $baseQuery['table_id'] = $_SESSION['table_id'];
+                                            ?>
                                             <h5><?= htmlspecialchars($sec_cat_name) ?></h5>
                                             <div class="row">
-                                                <?php foreach ($products as $product): ?>
-                                                    <div class="col-md-3 col-sm-6">
-                                                        <div class="card">
+                                                <?php foreach ($pagedProducts as $product): ?>
+                                                    <div class="col-lg-4 col-md-4 col-sm-6 col-12 mb-3">
+                                                        <div class="card h-100">
                                                             <?php if (!empty($product['images'])): ?>
-                                                                <img class="card-img-top" src="../img/<?= htmlspecialchars($product['images']) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="height: 300px; width: 100%; object-fit: cover; border-radius: 8px;">
+                                                                <img class="card-img-top" src="../img/<?= htmlspecialchars($product['images']) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="height: 160px; width: 100%; object-fit: cover; border-radius: 8px;">
                                                             <?php endif; ?>
                                                             <div class="card-body">
-                                                                <h5 class="card-title"><?= htmlspecialchars($product['name']) ?></h5>
+                                                                <h6 class="card-title mb-2"><?= htmlspecialchars($product['name']) ?></h6>
                                                                 <?php if ($product['discounted_price'] !== null): ?>
-                                                                    <p class="card-text">
+                                                                    <p class="card-text mb-2">
                                                                         <span style="text-decoration: line-through; color: #888;">
                                                                             $<?= number_format($product['original_price'], 2) ?>
                                                                         </span>
@@ -136,19 +163,46 @@ include 'layout/header.php';
                                                                         <span class="badge badge-success"><?= $product['discount_percent'] ?>% OFF</span>
                                                                     </p>
                                                                 <?php else: ?>
-                                                                    <p class="card-text">$<?= number_format($product['original_price'], 2) ?></p>
+                                                                    <p class="card-text mb-2">$<?= number_format($product['original_price'], 2) ?></p>
                                                                 <?php endif; ?>
                                                                 <form action="menu.php" method="post">
                                                                     <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
                                                                     <input type="hidden" name="product_name" value="<?= htmlspecialchars($product['name']) ?>">
                                                                     <input type="hidden" name="product_price" value="<?= $product['discounted_price'] !== null ? $product['discounted_price'] : $product['original_price'] ?>">
-                                                                    <button type="submit" name="add_to_cart" class="btn btn-success">Add to Cart</button>
+                                                                    <button type="submit" name="add_to_cart" class="btn btn-success btn-sm">Add to Cart</button>
                                                                 </form>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 <?php endforeach; ?>
                                             </div>
+
+                                            <?php if ($totalPages > 1): ?>
+                                                <nav aria-label="Page navigation" class="mb-4">
+                                                    <ul class="pagination pagination-sm">
+                                                        <?php
+                                                            // Prev
+                                                            $prevQuery = $baseQuery;
+                                                            $prevQuery[$pageParam] = max(1, $currentPage - 1);
+                                                            $nextQuery = $baseQuery;
+                                                            $nextQuery[$pageParam] = min($totalPages, $currentPage + 1);
+                                                        ?>
+                                                        <li class="page-item <?= $currentPage <= 1 ? 'disabled' : '' ?>">
+                                                            <a class="page-link" href="menu.php?<?= http_build_query($prevQuery) ?>">Prev</a>
+                                                        </li>
+                                                        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                                                            <?php $pageQuery = $baseQuery; $pageQuery[$pageParam] = $i; ?>
+                                                            <li class="page-item <?= $i == $currentPage ? 'active' : '' ?>">
+                                                                <a class="page-link" href="menu.php?<?= http_build_query($pageQuery) ?>"><?= $i ?></a>
+                                                            </li>
+                                                        <?php endfor; ?>
+                                                        <li class="page-item <?= $currentPage >= $totalPages ? 'disabled' : '' ?>">
+                                                            <a class="page-link" href="menu.php?<?= http_build_query($nextQuery) ?>">Next</a>
+                                                        </li>
+                                                    </ul>
+                                                </nav>
+                                            <?php endif; ?>
+
                                             <hr>
                                         <?php endforeach; ?>
                                     </div>
