@@ -3,8 +3,32 @@ require_once("../auth/isLogin.php");
 require_once '../require/db.php';
 
 // Date range for reports
-$start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
-$end_date = $_GET['end_date'] ?? date('Y-m-d');
+$period = $_GET['period'] ?? '';
+$today = date('Y-m-d');
+
+switch ($period) {
+    case 'day':
+        $start_date = $today;
+        $end_date = $today;
+        break;
+    case 'week':
+        $start_date = date('Y-m-d', strtotime('monday this week', strtotime($today)));
+        $end_date = date('Y-m-d', strtotime('sunday this week', strtotime($today)));
+        break;
+    case 'month':
+        $start_date = date('Y-m-01', strtotime($today));
+        $end_date = date('Y-m-t', strtotime($today));
+        break;
+    case 'year':
+        $start_date = date('Y-01-01', strtotime($today));
+        $end_date = date('Y-12-31', strtotime($today));
+        break;
+    default:
+        $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
+        $end_date = $_GET['end_date'] ?? date('Y-m-d');
+}
+
+$isCustom = !in_array($period, ['day','week','month','year'], true);
 
 // Payments in selected date range (with amounts)
 $result = $mysqli->query("
@@ -57,12 +81,21 @@ include 'layouts/header.php';
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h4 class="card-title mb-0">Payments Report</h4>
-                <form class="d-flex gap-2" method="get" action="payments.php">
-                    <input type="date" name="start_date" value="<?= $start_date ?>" class="form-control">
-                    <span class="align-self-center">to</span>
-                    <input type="date" name="end_date" value="<?= $end_date ?>" class="form-control">
-                    <button type="submit" class="btn btn-primary">Filter</button>
-                </form>
+                <div class="d-flex gap-2">
+                    <form class="d-flex gap-2" method="get" action="payments.php">
+                        <input type="hidden" name="period" value="">
+                        <input type="date" name="start_date" value="<?= $start_date ?>" class="form-control">
+                        <span class="align-self-center">to</span>
+                        <input type="date" name="end_date" value="<?= $end_date ?>" class="form-control">
+                        <button type="submit" class="btn btn-outline-secondary">Custom</button>
+                    </form>
+                    <div class="btn-group" role="group" aria-label="Quick periods">
+                        <a href="payments.php?period=day" class="btn btn-primary <?= isset($_GET['period']) && $_GET['period'] === 'day' ? 'active' : '' ?>">Day</a>
+                        <a href="payments.php?period=week" class="btn btn-primary <?= isset($_GET['period']) && $_GET['period'] === 'week' ? 'active' : '' ?>">Week</a>
+                        <a href="payments.php?period=month" class="btn btn-primary <?= isset($_GET['period']) && $_GET['period'] === 'month' ? 'active' : '' ?>">Month</a>
+                        <a href="payments.php?period=year" class="btn btn-primary <?= isset($_GET['period']) && $_GET['period'] === 'year' ? 'active' : '' ?>">Year</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
