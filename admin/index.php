@@ -111,25 +111,66 @@ require './layouts/header.php';
     </div>
 </div>
 
-<!-- Payment Report (Today) mirroring cashier dashboard metrics -->
+<?php
+// Payment report range filter (today, week, month, year)
+$range = isset($_GET['range']) ? $_GET['range'] : 'today';
+$allowedRanges = ['today', 'week', 'month', 'year'];
+if (!in_array($range, $allowedRanges, true)) {
+    $range = 'today';
+}
+
+switch ($range) {
+    case 'week':
+        $dateFilter = "YEARWEEK(order_date, 1) = YEARWEEK(CURDATE(), 1)"; // ISO week (Mon-Sun)
+        $rangeLabel = 'This Week';
+        break;
+    case 'month':
+        $dateFilter = "MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
+        $rangeLabel = 'This Month';
+        break;
+    case 'year':
+        $dateFilter = "YEAR(order_date) = YEAR(CURDATE())";
+        $rangeLabel = 'This Year';
+        break;
+    case 'today':
+    default:
+        $dateFilter = "DATE(order_date) = CURDATE()";
+        $rangeLabel = 'Today';
+        break;
+}
+?>
+
+<!-- Payment Report (range selectable) mirroring cashier dashboard metrics -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h4 class="card-title">Payment Report (Today)</h4>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="card-title">Payment Report (<?= htmlspecialchars($rangeLabel) ?>)</h4>
+                <form method="get" class="d-flex align-items-center">
+                    <label for="range" class="me-2 mb-0">Range</label>
+                    <select id="range" name="range" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Today</option>
+                        <option value="week" <?= $range === 'week' ? 'selected' : '' ?>>This Week</option>
+                        <option value="month" <?= $range === 'month' ? 'selected' : '' ?>>This Month</option>
+                        <option value="year" <?= $range === 'year' ? 'selected' : '' ?>>This Year</option>
+                    </select>
+                    <noscript>
+                        <button type="submit" class="btn btn-sm btn-secondary ms-2">Apply</button>
+                    </noscript>
+                </form>
             </div>
             <div class="card-body">
                 <div class="row">
-                    <!-- Total Orders Today -->
+                    <!-- Total Orders (range) -->
                     <div class="col-md-3 mb-3">
                         <div class="card bg-primary text-white">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between">
                                     <div>
-                                        <h5 class="card-title">Total Orders Today</h5>
+                                        <h5 class="card-title">Total Orders</h5>
                                         <h3 class="mb-0">
                                             <?php
-                                            $result = $mysqli->query("SELECT COUNT(*) as count FROM orders WHERE DATE(order_date) = CURDATE()");
+                                            $result = $mysqli->query("SELECT COUNT(*) as count FROM orders WHERE $dateFilter");
                                             echo $result->fetch_assoc()['count'];
                                             ?>
                                         </h3>
@@ -142,16 +183,16 @@ require './layouts/header.php';
                         </div>
                     </div>
 
-                    <!-- Paid Orders Today -->
+                    <!-- Paid Orders (range) -->
                     <div class="col-md-3 mb-3">
                         <div class="card bg-success text-white">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between">
                                     <div>
-                                        <h5 class="card-title">Paid Orders Today</h5>
+                                        <h5 class="card-title">Paid Orders</h5>
                                         <h3 class="mb-0">
                                             <?php
-                                            $result = $mysqli->query("SELECT COUNT(*) as count FROM orders WHERE DATE(order_date) = CURDATE() AND status = 'completed'");
+                                            $result = $mysqli->query("SELECT COUNT(*) as count FROM orders WHERE $dateFilter AND status = 'completed'");
                                             echo $result->fetch_assoc()['count'];
                                             ?>
                                         </h3>
@@ -164,7 +205,7 @@ require './layouts/header.php';
                         </div>
                     </div>
 
-                    <!-- Pending Payments -->
+                    <!-- Pending Payments (range) -->
                     <div class="col-md-3 mb-3">
                         <div class="card bg-warning text-white">
                             <div class="card-body">
@@ -173,7 +214,7 @@ require './layouts/header.php';
                                         <h5 class="card-title">Pending Payments</h5>
                                         <h3 class="mb-0">
                                             <?php
-                                            $result = $mysqli->query("SELECT COUNT(*) as count FROM orders WHERE status = 'pending' AND kitchen_status = 'ready'");
+                                            $result = $mysqli->query("SELECT COUNT(*) as count FROM orders WHERE $dateFilter AND status = 'pending' AND kitchen_status = 'ready'");
                                             echo $result->fetch_assoc()['count'];
                                             ?>
                                         </h3>
@@ -186,16 +227,16 @@ require './layouts/header.php';
                         </div>
                     </div>
 
-                    <!-- Revenue Today -->
+                    <!-- Revenue (range) -->
                     <div class="col-md-3 mb-3">
                         <div class="card bg-info text-white">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between">
                                     <div>
-                                        <h5 class="card-title">Revenue Today</h5>
+                                        <h5 class="card-title">Revenue</h5>
                                         <h3 class="mb-0">
                                             <?php
-                                            $result = $mysqli->query("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE DATE(order_date) = CURDATE() AND status = 'completed'");
+                                            $result = $mysqli->query("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE $dateFilter AND status = 'completed'");
                                             $total = $result->fetch_assoc()['total'] ?? 0;
                                             echo '$' . number_format((float)$total, 2);
                                             ?>
