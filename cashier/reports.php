@@ -5,6 +5,32 @@ require_once '../require/db.php';
 // Get date range for reports
 $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
+$period = $_GET['period'] ?? '';
+$anchor_date = $_GET['anchor_date'] ?? null;
+if ($period) {
+    $anchor = $anchor_date ? $anchor_date : $end_date;
+    $anchor_ts = strtotime($anchor);
+    switch ($period) {
+        case 'week':
+            $start_date = date('Y-m-d', strtotime('monday this week', $anchor_ts));
+            $end_date = date('Y-m-d', strtotime('sunday this week', $anchor_ts));
+            break;
+        case 'month':
+            $start_date = date('Y-m-01', $anchor_ts);
+            $end_date = date('Y-m-t', $anchor_ts);
+            break;
+        case 'year':
+            $start_date = date('Y-01-01', $anchor_ts);
+            $end_date = date('Y-12-31', $anchor_ts);
+            break;
+        case 'day':
+        default:
+            $start_date = date('Y-m-d', $anchor_ts);
+            $end_date = date('Y-m-d', $anchor_ts);
+            break;
+    }
+}
+$anchor_date = $anchor_date ? $anchor_date : $end_date;
 
 // Fetch payment statistics
 $payments = $mysqli->query("
@@ -40,7 +66,15 @@ include 'layout/header.php';
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="fas fa-chart-bar"></i> Reports & Analytics</h2>
                 <div class="d-flex align-items-center gap-3">
-                    <form class="d-flex gap-2">
+                    <form class="d-flex gap-2" method="get">
+                        <select name="period" class="form-select">
+                            <option value="">Custom</option>
+                            <option value="day" <?= $period === 'day' ? 'selected' : '' ?>>Day</option>
+                            <option value="week" <?= $period === 'week' ? 'selected' : '' ?>>Week</option>
+                            <option value="month" <?= $period === 'month' ? 'selected' : '' ?>>Month</option>
+                            <option value="year" <?= $period === 'year' ? 'selected' : '' ?>>Year</option>
+                        </select>
+                        <input type="date" name="anchor_date" value="<?= $anchor_date ?>" class="form-control" title="Anchor date for period">
                         <input type="date" name="start_date" value="<?= $start_date ?>" class="form-control">
                         <span class="align-self-center">to</span>
                         <input type="date" name="end_date" value="<?= $end_date ?>" class="form-control">
